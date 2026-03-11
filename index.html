@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Service Expiry Tracker</title>
+<script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@2.38.3/lib/msal-browser.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0e0f13; --surface: #16181f; --surface2: #1e2029;
+  --border: #2a2d3a; --text: #e8eaf0; --muted: #6b7080;
+  --green: #2ecc8a; --yellow: #f5c842; --red: #ff4f6a; --blue: #4f8fff;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); font-family: 'DM Mono', monospace; min-height: 100vh; }
+
+/* LOADER */
+#loader { position: fixed; inset: 0; background: var(--bg); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 9999; gap: 20px; }
+.loader-logo { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 1.8rem; }
+.loader-logo span { color: var(--blue); }
+.spinner { width: 36px; height: 36px; border: 3px solid var(--border); border-top-color: var(--blue); border-radius: 50%; animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.loader-msg { font-size: 0.75rem; color: var(--muted); letter-spacing: 2px; text-transform: uppercase; }
+
+/* LOGIN */
+#loginScreen { display: none; min-height: 100vh; align-items: center; justify-content: center; }
+.login-card { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 48px; text-align: center; max-width: 400px; width: 100%; }
+.login-logo { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 2rem; margin-bottom: 10px; }
+.login-logo span { color: var(--blue); }
+.login-sub { color: var(--muted); font-size: 0.8rem; margin-bottom: 32px; line-height: 1.7; }
+.btn-ms { background: var(--blue); border: none; color: #fff; font-family: 'Syne', sans-serif; font-weight: 700; font-size: 0.9rem; padding: 14px 32px; border-radius: 10px; cursor: pointer; width: 100%; display: flex; align-items: center; justify-content: center; gap: 12px; transition: background 0.2s; }
+.btn-ms:hover { background: #3a7aee; }
+.ms-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; width: 18px; height: 18px; flex-shrink: 0; }
+.ms-grid div { border-radius: 1px; }
+.ms-grid div:nth-child(1) { background: #f25022; }
+.ms-grid div:nth-child(2) { background: #7fba00; }
+.ms-grid div:nth-child(3) { background: #00a4ef; }
+.ms-grid div:nth-child(4) { background: #ffb900; }
+
+/* APP */
+#appScreen { display: none; }
+header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 18px 36px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; }
+.logo { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 1.3rem; }
+.logo span { color: var(--blue); }
+.hdr-right { display: flex; align-items: center; gap: 14px; }
+.user-chip { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 7px 14px; display: flex; align-items: center; gap: 10px; }
+.avatar { width: 28px; height: 28px; border-radius: 50%; background: var(--blue); display: flex; align-items: center; justify-content: center; font-family: 'Syne', sans-serif; font-weight: 700; font-size: 0.75rem; color: #fff; flex-shrink: 0; }
+.uname { font-size: 0.75rem; }
+.btn-out { background: none; border: 1px solid var(--border); color: var(--muted); font-family: 'DM Mono', monospace; font-size: 0.7rem; padding: 6px 12px; border-radius: 6px; cursor: pointer; transition: all 0.2s; }
+.btn-out:hover { border-color: var(--red); color: var(--red); }
+.date-txt { font-size: 0.72rem; color: var(--muted); letter-spacing: 1px; }
+
+main { padding: 36px; max-width: 1400px; margin: 0 auto; }
+
+/* SUMMARY */
+.cards { display: grid; grid-template-columns: repeat(4,1fr); gap: 16px; margin-bottom: 36px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 24px; position: relative; overflow: hidden; transition: transform 0.2s; }
+.card:hover { transform: translateY(-2px); }
+.card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; }
+.card.c-total::before { background: var(--blue); }
+.card.c-active::before { background: var(--green); }
+.card.c-warn::before { background: var(--yellow); }
+.card.c-exp::before { background: var(--red); }
+.clabel { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 2px; color: var(--muted); margin-bottom: 10px; }
+.cnum { font-family: 'Syne', sans-serif; font-size: 2.8rem; font-weight: 800; line-height: 1; }
+.c-total .cnum { color: var(--blue); }
+.c-active .cnum { color: var(--green); }
+.c-warn .cnum { color: var(--yellow); }
+.c-exp .cnum { color: var(--red); }
+.csub { font-size: 0.7rem; color: var(--muted); margin-top: 6px; }
+
+/* CONTROLS */
+.controls { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; gap: 12px; flex-wrap: wrap; }
+.filters { display: flex; gap: 8px; flex-wrap: wrap; }
+.fbtn { background: var(--surface); border: 1px solid var(--border); color: var(--muted); font-family: 'DM Mono', monospace; font-size: 0.7rem; padding: 7px 14px; border-radius: 6px; cursor: pointer; text-transform: uppercase; letter-spacing: 1px; transition: all 0.2s; }
+.fbtn:hover, .fbtn.on { border-color: var(--blue); color: var(--blue); background: rgba(79,143,255,0.08); }
+.ctrl-right { display: flex; gap: 10px; align-items: center; }
+.search { background: var(--surface); border: 1px solid var(--border); color: var(--text); font-family: 'DM Mono', monospace; font-size: 0.78rem; padding: 8px 14px; border-radius: 8px; outline: none; width: 200px; transition: border-color 0.2s; }
+.search:focus { border-color: var(--blue); }
+.search::placeholder { color: var(--muted); }
+.btn-add { background: var(--blue); border: none; color: #fff; font-family: 'Syne', sans-serif; font-weight: 700; font-size: 0.78rem; padding: 9px 20px; border-radius: 8px; cursor: pointer; transition: all 0.2s; }
+.btn-add:hover { background: #3a7aee; }
+
+/* TABLE */
+.tbl-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+table { width: 100%; border-collapse: collapse; }
+thead { background: var(--surface2); border-bottom: 1px solid var(--border); }
+th { font-size: 0.63rem; text-transform: uppercase; letter-spacing: 2px; color: var(--muted); padding: 13px 18px; text-align: left; font-weight: 500; }
+tbody tr { border-bottom: 1px solid var(--border); transition: background 0.15s; }
+tbody tr:last-child { border-bottom: none; }
+tbody tr:hover { background: var(--surface2); }
+td { padding: 15px 18px; font-size: 0.8rem; vertical-align: middle; }
+.sname { font-family: 'Syne', sans-serif; font-weight: 600; font-size: 0.88rem; }
+.svendor { font-size: 0.7rem; color: var(--muted); margin-top: 3px; }
+.tbadge { font-size: 0.63rem; text-transform: uppercase; letter-spacing: 1px; padding: 4px 9px; border-radius: 4px; display: inline-block; }
+.tl { background: rgba(79,143,255,0.12); color: var(--blue); }
+.ta { background: rgba(46,204,138,0.12); color: var(--green); }
+.ts { background: rgba(245,200,66,0.12); color: var(--yellow); }
+.sbadge { display: inline-flex; align-items: center; gap: 6px; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 1px; padding: 5px 11px; border-radius: 20px; }
+.dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.s-active { background: rgba(46,204,138,0.12); color: var(--green); }
+.s-active .dot { background: var(--green); box-shadow: 0 0 6px var(--green); }
+.s-warn { background: rgba(245,200,66,0.12); color: var(--yellow); }
+.s-warn .dot { background: var(--yellow); box-shadow: 0 0 6px var(--yellow); }
+.s-exp { background: rgba(255,79,106,0.12); color: var(--red); }
+.s-exp .dot { background: var(--red); box-shadow: 0 0 6px var(--red); }
+.dnum { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 1rem; }
+.d-active { color: var(--green); } .d-warn { color: var(--yellow); } .d-exp { color: var(--red); }
+.dsub { font-size: 0.63rem; color: var(--muted); }
+.pbar { height: 4px; background: var(--border); border-radius: 2px; margin-top: 5px; width: 110px; overflow: hidden; }
+.pfill { height: 100%; border-radius: 2px; }
+.abtn { background: none; border: 1px solid var(--border); font-family: 'DM Mono', monospace; font-size: 0.68rem; padding: 5px 11px; border-radius: 5px; cursor: pointer; transition: all 0.2s; text-transform: uppercase; }
+.abtn.edit { color: var(--blue); } .abtn.edit:hover { background: rgba(79,143,255,0.1); border-color: var(--blue); }
+.abtn.del { color: var(--red); } .abtn.del:hover { background: rgba(255,79,106,0.1); border-color: var(--red); }
+.empty { text-align: center; padding: 70px 20px; color: var(--muted); }
+.empty-icon { font-size: 2.5rem; opacity: 0.3; margin-bottom: 14px; }
+.empty-t { font-family: 'Syne', sans-serif; font-size: 1rem; color: var(--text); margin-bottom: 6px; }
+
+/* MODAL */
+.overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.75); backdrop-filter: blur(4px); z-index: 1000; display: none; align-items: center; justify-content: center; }
+.overlay.open { display: flex; }
+.modal { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 34px; width: 100%; max-width: 500px; animation: mIn 0.22s ease; }
+@keyframes mIn { from { opacity:0; transform: scale(0.95) translateY(8px); } to { opacity:1; transform: scale(1) translateY(0); } }
+.mtitle { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 1.2rem; margin-bottom: 26px; }
+.fgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.full { grid-column: 1/-1; }
+.fg { display: flex; flex-direction: column; gap: 5px; }
+.flbl { font-size: 0.63rem; text-transform: uppercase; letter-spacing: 2px; color: var(--muted); }
+.finput, .fsel { background: var(--surface2); border: 1px solid var(--border); color: var(--text); font-family: 'DM Mono', monospace; font-size: 0.8rem; padding: 9px 13px; border-radius: 7px; outline: none; width: 100%; transition: border-color 0.2s; }
+.finput:focus, .fsel:focus { border-color: var(--blue); }
+.fsel option { background: var(--surface2); }
+.mactions { display: flex; gap: 10px; margin-top: 26px; justify-content: flex-end; }
+.btn-cancel { background: none; border: 1px solid var(--border); color: var(--muted); font-family: 'DM Mono', monospace; font-size: 0.75rem; padding: 9px 18px; border-radius: 7px; cursor: pointer; transition: all 0.2s; }
+.btn-cancel:hover { border-color: var(--text); color: var(--text); }
+.btn-save { background: var(--blue); border: none; color: #fff; font-family: 'Syne', sans-serif; font-weight: 700; font-size: 0.8rem; padding: 9px 22px; border-radius: 7px; cursor: pointer; transition: all 0.2s; }
+.btn-save:hover { background: #3a7aee; }
+.btn-save:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* TOAST */
+.toast { position: fixed; bottom: 28px; right: 28px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 13px 18px; font-size: 0.76rem; z-index: 9999; display: none; max-width: 280px; }
+.toast.ok { border-color: var(--green); color: var(--green); }
+.toast.err { border-color: var(--red); color: var(--red); }
+
+@media(max-width:900px) { main { padding: 18px; } .cards { grid-template-columns: repeat(2,1fr); } .fgrid { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+
+<!-- LOADER -->
+<div id="loader">
+  <div class="loader-logo">Service<span>Track</span></div>
+  <div class="spinner"></div>
+  <div class="loader-msg" id="loaderMsg">Connecting to Microsoft 365...</div>
+</div>
+
+<!-- LOGIN -->
+<div id="loginScreen">
+  <div class="login-card">
+    <div class="login-logo">Service<span>Track</span></div>
+    <div class="login-sub">Sign in with your Microsoft 365 account to access the Service Expiry Tracker</div>
+    <button class="btn-ms" onclick="signIn()">
+      <div class="ms-grid"><div></div><div></div><div></div><div></div></div>
+      Sign in with Microsoft
+    </button>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="appScreen">
+  <header>
+    <div class="logo">Service<span>Track</span></div>
+    <div class="hdr-right">
+      <span class="date-txt" id="dateDisplay"></span>
+      <div class="user-chip">
+        <div class="avatar" id="userAvatar">?</div>
+        <span class="uname" id="userName">...</span>
+      </div>
+      <button class="btn-out" onclick="signOut()">Sign Out</button>
+    </div>
+  </header>
+  <main>
+    <div class="cards">
+      <div class="card c-total"><div class="clabel">Total</div><div class="cnum" id="cTotal">0</div><div class="csub">All tracked</div></div>
+      <div class="card c-active"><div class="clabel">Active</div><div class="cnum" id="cActive">0</div><div class="csub">&gt;30 days left</div></div>
+      <div class="card c-warn"><div class="clabel">Expiring Soon</div><div class="cnum" id="cWarn">0</div><div class="csub">Within 30 days</div></div>
+      <div class="card c-exp"><div class="clabel">Expired</div><div class="cnum" id="cExp">0</div><div class="csub">Action required</div></div>
+    </div>
+    <div class="controls">
+      <div class="filters">
+        <button class="fbtn on" onclick="setFilter('all',this)">All</button>
+        <button class="fbtn" onclick="setFilter('active',this)">Active</button>
+        <button class="fbtn" onclick="setFilter('warning',this)">Expiring Soon</button>
+        <button class="fbtn" onclick="setFilter('expired',this)">Expired</button>
+        <button class="fbtn" onclick="setFilter('license',this)">Licenses</button>
+        <button class="fbtn" onclick="setFilter('amc',this)">AMC</button>
+        <button class="fbtn" onclick="setFilter('subscription',this)">Subscriptions</button>
+      </div>
+      <div class="ctrl-right">
+        <input type="text" class="search" placeholder="Search..." id="searchBox" oninput="render()">
+        <button class="btn-add" onclick="openModal()">+ Add Service</button>
+      </div>
+    </div>
+    <div class="tbl-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Service / Vendor</th><th>Type</th><th>Start Date</th>
+            <th>Expiry Date</th><th>Days Left</th><th>Status</th><th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+      <div id="emptyState" class="empty" style="display:none">
+        <div class="empty-icon">📋</div>
+        <div class="empty-t">No services found</div>
+        <div>Add your first service contract to start tracking</div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- MODAL -->
+<div class="overlay" id="overlay">
+  <div class="modal">
+    <div class="mtitle" id="mtitle">Add Service</div>
+    <div class="fgrid">
+      <div class="fg full"><label class="flbl">Service Name *</label><input class="finput" id="fName" placeholder="e.g. Microsoft 365"></div>
+      <div class="fg full"><label class="flbl">Vendor / Provider</label><input class="finput" id="fVendor" placeholder="e.g. Microsoft"></div>
+      <div class="fg"><label class="flbl">Type *</label>
+        <select class="fsel" id="fType">
+          <option value="license">Software License</option>
+          <option value="amc">AMC / Maintenance</option>
+          <option value="subscription">Subscription</option>
+        </select>
+      </div>
+      <div class="fg"><label class="flbl">Cost</label><input class="finput" id="fCost" placeholder="e.g. AED 5,000"></div>
+      <div class="fg"><label class="flbl">Start Date *</label><input type="date" class="finput" id="fStart"></div>
+      <div class="fg"><label class="flbl">Expiry Date *</label><input type="date" class="finput" id="fExpiry"></div>
+      <div class="fg full"><label class="flbl">Notes</label><input class="finput" id="fNotes" placeholder="Additional notes..."></div>
+    </div>
+    <div class="mactions">
+      <button class="btn-cancel" onclick="closeModal()">Cancel</button>
+      <button class="btn-save" id="btnSave" onclick="saveService()">Save Service</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ── CONFIG ─────────────────────────────────────────────
+const CLIENT_ID  = '3aa630e1-8d2e-43ea-a928-5b39c30becad';
+const TENANT_ID  = '91742063-fccc-4cba-b34b-69be54e484e8';
+const REDIRECT   = 'https://farz47.github.io/service-tracker/';
+const SITE_HOST  = 'alfanar01.sharepoint.com';
+const SITE_PATH  = '/sites/AssetManagement';
+const LIST_NAME  = 'ServiceTracker';
+const SCOPES     = ['https://graph.microsoft.com/Sites.ReadWrite.All','https://graph.microsoft.com/User.Read'];
+
+// ── STATE ───────────────────────────────────────────────
+let msalApp, services = [], editId = null, filter = 'all', siteId, listId;
+
+// ── WAIT FOR MSAL ───────────────────────────────────────
+function waitMSAL(n) {
+  if (typeof msal !== 'undefined') {
+    startApp();
+  } else if (n > 0) {
+    setTimeout(() => waitMSAL(n - 1), 400);
+  } else {
+    document.getElementById('loaderMsg').textContent = 'Failed to load auth library. Check network.';
+    document.getElementById('loaderMsg').style.color = '#ff4f6a';
+  }
+}
+
+// ── INIT ────────────────────────────────────────────────
+async function startApp() {
+  try {
+    msalApp = new msal.PublicClientApplication({
+      auth: {
+        clientId: CLIENT_ID,
+        authority: 'https://login.microsoftonline.com/' + TENANT_ID,
+        redirectUri: REDIRECT
+      },
+      cache: { cacheLocation: 'sessionStorage' }
+    });
+    await msalApp.initialize();
+    const resp = await msalApp.handleRedirectPromise();
+    if (resp) msalApp.setActiveAccount(resp.account);
+    const accounts = msalApp.getAllAccounts();
+    if (accounts.length > 0) {
+      msalApp.setActiveAccount(accounts[0]);
+      showUser(accounts[0]);
+      await loadData();
+    } else {
+      showLogin();
+    }
+  } catch(e) {
+    console.error(e);
+    document.getElementById('loaderMsg').textContent = 'Auth error: ' + e.message;
+    document.getElementById('loaderMsg').style.color = '#ff4f6a';
+  }
+}
+
+function showUser(acc) {
+  const n = acc.name || acc.username;
+  document.getElementById('userName').textContent = n;
+  document.getElementById('userAvatar').textContent = n.charAt(0).toUpperCase();
+}
+
+async function signIn() {
+  try { await msalApp.loginRedirect({ scopes: SCOPES }); }
+  catch(e) { toast('Login failed: ' + e.message, 'err'); }
+}
+
+function signOut() { msalApp.logoutRedirect(); }
+
+async function getToken() {
+  const r = await msalApp.acquireTokenSilent({ scopes: SCOPES, account: msalApp.getActiveAccount() });
+  return r.accessToken;
+}
+
+function showLogin() {
+  document.getElementById('loader').style.display = 'none';
+  document.getElementById('loginScreen').style.display = 'flex';
+}
+
+// ── GRAPH ───────────────────────────────────────────────
+async function api(url, method='GET', body=null) {
+  const token = await getToken();
+  const opts = { method, headers: { 'Authorization':'Bearer '+token, 'Content-Type':'application/json' } };
+  if (body) opts.body = JSON.stringify(body);
+  const r = await fetch(url, opts);
+  if (!r.ok) throw new Error(await r.text());
+  return method === 'DELETE' ? null : r.json();
+}
+
+async function loadData() {
+  document.getElementById('loader').style.display = 'flex';
+  document.getElementById('loaderMsg').textContent = 'Loading data from SharePoint...';
+  try {
+    const site = await api(`https://graph.microsoft.com/v1.0/sites/${SITE_HOST}:${SITE_PATH}`);
+    siteId = site.id;
+    const lists = await api(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists?$filter=displayName eq '${LIST_NAME}'`);
+    if (!lists.value.length) throw new Error(`List "${LIST_NAME}" not found. Please create it first.`);
+    listId = lists.value[0].id;
+    const items = await api(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/${listId}/items?$expand=fields&$top=500`);
+    services = items.value.map(i => ({
+      id: i.id,
+      name: i.fields.Title || '',
+      vendor: i.fields.Vendor || '',
+      type: i.fields.ServiceType || 'license',
+      start: (i.fields.StartDate || '').split('T')[0],
+      expiry: (i.fields.ExpiryDate || '').split('T')[0],
+      cost: i.fields.Cost || '',
+      notes: i.fields.Notes || ''
+    }));
+    document.getElementById('loader').style.display = 'none';
+    document.getElementById('appScreen').style.display = 'block';
+    document.getElementById('dateDisplay').textContent = new Date().toLocaleDateString('en-GB',{weekday:'short',day:'2-digit',month:'short',year:'numeric'});
+    render();
+  } catch(e) {
+    document.getElementById('loader').style.display = 'none';
+    showLogin();
+    toast(e.message, 'err');
+    console.error(e);
+  }
+}
+
+async function createItem(d) {
+  return api(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/${listId}/items`,'POST',
+    { fields:{ Title:d.name, Vendor:d.vendor, ServiceType:d.type, StartDate:d.start, ExpiryDate:d.expiry, Cost:d.cost, Notes:d.notes }});
+}
+
+async function updateItem(id, d) {
+  return api(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/${listId}/items/${id}/fields`,'PATCH',
+    { Title:d.name, Vendor:d.vendor, ServiceType:d.type, StartDate:d.start, ExpiryDate:d.expiry, Cost:d.cost, Notes:d.notes });
+}
+
+async function deleteItem(id) {
+  return api(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/${listId}/items/${id}`,'DELETE');
+}
+
+// ── HELPERS ─────────────────────────────────────────────
+function daysLeft(e) {
+  const t = new Date(); t.setHours(0,0,0,0);
+  const x = new Date(e); x.setHours(0,0,0,0);
+  return Math.floor((x-t)/86400000);
+}
+function status(d) { return d<0?'expired':d<=30?'warning':'active'; }
+function pct(s,e) {
+  const tot = Math.max(1,Math.floor((new Date(e)-new Date(s))/86400000));
+  const el  = Math.floor((new Date()-new Date(s))/86400000);
+  return Math.min(100,Math.max(0,Math.round(el/tot*100)));
+}
+function fmtDate(s) {
+  if(!s) return '—';
+  return new Date(s).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'});
+}
+function toast(msg, type='ok') {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.className = 'toast '+type; t.style.display = 'block';
+  setTimeout(()=>t.style.display='none', 3500);
+}
+
+// ── RENDER ───────────────────────────────────────────────
+function render() {
+  const q = document.getElementById('searchBox').value.toLowerCase();
+  let rows = services.filter(s => {
+    const d = daysLeft(s.expiry), st = status(d);
+    const mf = filter==='all'||filter===st||s.type===filter;
+    const ms = !q||s.name.toLowerCase().includes(q)||(s.vendor||'').toLowerCase().includes(q);
+    return mf && ms;
+  }).sort((a,b) => daysLeft(a.expiry)-daysLeft(b.expiry));
+
+  const tbody = document.getElementById('tbody');
+  const empty = document.getElementById('emptyState');
+
+  if (!rows.length) { tbody.innerHTML=''; empty.style.display='block'; }
+  else {
+    empty.style.display='none';
+    const typeLabel = t => t==='license'?'License':t==='amc'?'AMC':'Subscription';
+    const typeCls   = t => t==='license'?'tl':t==='amc'?'ta':'ts';
+    const pcol      = st => st==='active'?'#2ecc8a':st==='warning'?'#f5c842':'#ff4f6a';
+    const slabel    = st => st==='active'?'Active':st==='warning'?'Expiring Soon':'Expired';
+    tbody.innerHTML = rows.map(s => {
+      const d=daysLeft(s.expiry), st=status(d), p=pct(s.start,s.expiry);
+      const dl = d<0?`${Math.abs(d)} days ago`:d===0?'Today!':d+' days';
+      return `<tr>
+        <td><div class="sname">${s.name}</div>${s.vendor?`<div class="svendor">${s.vendor}${s.cost?' · '+s.cost:''}</div>`:''}</td>
+        <td><span class="tbadge ${typeCls(s.type)}">${typeLabel(s.type)}</span></td>
+        <td style="color:var(--muted);font-size:.76rem">${fmtDate(s.start)}</td>
+        <td style="font-size:.76rem">${fmtDate(s.expiry)}</td>
+        <td><div class="dnum d-${st}">${Math.abs(d)}</div><div class="dsub">${dl}</div>
+            <div class="pbar"><div class="pfill" style="width:${p}%;background:${pcol(st)}"></div></div></td>
+        <td><span class="sbadge s-${st}"><span class="dot"></span>${slabel(st)}</span></td>
+        <td><button class="abtn edit" onclick="openModal('${s.id}')">Edit</button>
+            <button class="abtn del" onclick="delService('${s.id}')">Delete</button></td>
+      </tr>`;
+    }).join('');
+  }
+
+  document.getElementById('cTotal').textContent  = services.length;
+  document.getElementById('cActive').textContent  = services.filter(s=>status(daysLeft(s.expiry))==='active').length;
+  document.getElementById('cWarn').textContent    = services.filter(s=>status(daysLeft(s.expiry))==='warning').length;
+  document.getElementById('cExp').textContent     = services.filter(s=>status(daysLeft(s.expiry))==='expired').length;
+}
+
+function setFilter(f, btn) {
+  filter = f;
+  document.querySelectorAll('.fbtn').forEach(b=>b.classList.remove('on'));
+  btn.classList.add('on');
+  render();
+}
+
+// ── MODAL ────────────────────────────────────────────────
+function openModal(id=null) {
+  editId = id;
+  document.getElementById('mtitle').textContent = id ? 'Edit Service' : 'Add Service';
+  if (id) {
+    const s = services.find(x=>x.id===id);
+    document.getElementById('fName').value   = s.name;
+    document.getElementById('fVendor').value = s.vendor||'';
+    document.getElementById('fType').value   = s.type;
+    document.getElementById('fCost').value   = s.cost||'';
+    document.getElementById('fStart').value  = s.start;
+    document.getElementById('fExpiry').value = s.expiry;
+    document.getElementById('fNotes').value  = s.notes||'';
+  } else {
+    ['fName','fVendor','fCost','fStart','fExpiry','fNotes'].forEach(id=>document.getElementById(id).value='');
+    document.getElementById('fType').value = 'license';
+  }
+  document.getElementById('overlay').classList.add('open');
+}
+
+function closeModal() { document.getElementById('overlay').classList.remove('open'); editId=null; }
+
+async function delService(id) {
+  if (!confirm('Delete this service?')) return;
+  try {
+    await deleteItem(id);
+    services = services.filter(s=>s.id!==id);
+    render(); toast('Deleted ✓');
+  } catch(e) { toast('Delete failed: '+e.message,'err'); }
+}
+
+async function saveService() {
+  const name=document.getElementById('fName').value.trim();
+  const start=document.getElementById('fStart').value;
+  const expiry=document.getElementById('fExpiry').value;
+  if (!name||!start||!expiry) { toast('Name, Start Date and Expiry Date are required','err'); return; }
+  const d = {
+    name, start, expiry,
+    vendor: document.getElementById('fVendor').value.trim(),
+    type:   document.getElementById('fType').value,
+    cost:   document.getElementById('fCost').value.trim(),
+    notes:  document.getElementById('fNotes').value.trim()
+  };
+  const btn = document.getElementById('btnSave');
+  btn.disabled=true; btn.textContent='Saving...';
+  try {
+    if (editId) {
+      await updateItem(editId, d);
+      const i = services.findIndex(s=>s.id===editId);
+      services[i] = {...services[i], ...d};
+      toast('Updated ✓');
+    } else {
+      const r = await createItem(d);
+      services.push({id:r.id, ...d});
+      toast('Added ✓');
+    }
+    closeModal(); render();
+  } catch(e) { toast('Save failed: '+e.message,'err'); }
+  finally { btn.disabled=false; btn.textContent='Save Service'; }
+}
+
+document.getElementById('overlay').addEventListener('click', e=>{ if(e.target===e.currentTarget) closeModal(); });
+
+// ── START ────────────────────────────────────────────────
+waitMSAL(25);
+</script>
+</body>
+</html>
