@@ -3,8 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Service Expiry Tracker</title>
+<title>ServiceTrack – Alfanar</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<script src="https://alcdn.msauth.net/browser/2.38.3/js/msal-browser.min.js"></script>
 <style>
   :root {
     --bg: #0e0f13;
@@ -27,14 +28,13 @@
     color: var(--text);
     font-family: 'DM Mono', monospace;
     min-height: 100vh;
-    padding: 0;
   }
 
-  /* HEADER */
+  /* ── HEADER ── */
   header {
     background: var(--surface);
     border-bottom: 1px solid var(--border);
-    padding: 20px 40px;
+    padding: 18px 40px;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -50,31 +50,92 @@
     letter-spacing: -0.5px;
     color: var(--text);
   }
-
   .logo span { color: var(--accent); }
 
-  .header-right {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-  }
+  .header-right { display: flex; align-items: center; gap: 16px; }
 
   .today-date {
-    font-size: 0.75rem;
+    font-size: 0.72rem;
     color: var(--muted);
     letter-spacing: 1px;
     text-transform: uppercase;
   }
 
-  /* MAIN */
-  main { padding: 40px; max-width: 1400px; margin: 0 auto; }
+  /* ── AUTH BUTTON ── */
+  #authBtn {
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 0.75rem;
+    padding: 8px 18px;
+    border-radius: 7px;
+    cursor: pointer;
+    border: none;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    letter-spacing: 0.3px;
+  }
+  #authBtn.sign-in  { background: var(--accent); color: #fff; }
+  #authBtn.sign-in:hover  { background: #3a7aee; }
+  #authBtn.sign-out { background: transparent; border: 1px solid var(--border); color: var(--muted); }
+  #authBtn.sign-out:hover { border-color: var(--red); color: var(--red); }
 
-  /* SUMMARY CARDS */
+  .user-pill {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.72rem;
+    color: var(--muted);
+  }
+  .user-avatar {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--accent), #7b5fff);
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 0.65rem;
+    color: #fff;
+    flex-shrink: 0;
+  }
+
+  /* ── STATUS BAR ── */
+  #statusBar {
+    padding: 10px 40px;
+    font-size: 0.72rem;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    border-bottom: 1px solid var(--border);
+    min-height: 40px;
+    transition: all 0.3s;
+  }
+  #statusBar.info    { background: rgba(79,143,255,0.07); color: var(--blue); }
+  #statusBar.success { background: rgba(46,204,138,0.07); color: var(--green); }
+  #statusBar.error   { background: rgba(255,79,106,0.07); color: var(--red); }
+  #statusBar.warning { background: rgba(245,200,66,0.07); color: var(--yellow); }
+  #statusBar.hidden  { display: none; }
+
+  .spinner {
+    width: 14px; height: 14px;
+    border: 2px solid currentColor;
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    flex-shrink: 0;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── MAIN ── */
+  main { padding: 36px 40px; max-width: 1400px; margin: 0 auto; }
+
+  /* ── SUMMARY CARDS ── */
   .summary-grid {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
     gap: 16px;
-    margin-bottom: 40px;
+    margin-bottom: 36px;
   }
 
   .summary-card {
@@ -86,79 +147,66 @@
     overflow: hidden;
     transition: transform 0.2s;
   }
-
   .summary-card:hover { transform: translateY(-2px); }
-
   .summary-card::before {
     content: '';
     position: absolute;
     top: 0; left: 0; right: 0;
     height: 3px;
   }
-
-  .summary-card.total::before { background: var(--blue); }
-  .summary-card.active::before { background: var(--green); }
+  .summary-card.total::before   { background: var(--blue); }
+  .summary-card.active::before  { background: var(--green); }
   .summary-card.warning::before { background: var(--yellow); }
   .summary-card.expired::before { background: var(--red); }
 
   .summary-label {
-    font-size: 0.7rem;
+    font-size: 0.68rem;
     text-transform: uppercase;
     letter-spacing: 2px;
     color: var(--muted);
     margin-bottom: 12px;
   }
-
   .summary-number {
     font-family: 'Syne', sans-serif;
     font-size: 2.8rem;
     font-weight: 800;
     line-height: 1;
   }
-
-  .summary-card.total .summary-number { color: var(--blue); }
-  .summary-card.active .summary-number { color: var(--green); }
+  .summary-card.total .summary-number   { color: var(--blue); }
+  .summary-card.active .summary-number  { color: var(--green); }
   .summary-card.warning .summary-number { color: var(--yellow); }
   .summary-card.expired .summary-number { color: var(--red); }
+  .summary-sub { font-size: 0.7rem; color: var(--muted); margin-top: 6px; }
 
-  .summary-sub {
-    font-size: 0.72rem;
-    color: var(--muted);
-    margin-top: 6px;
-  }
-
-  /* CONTROLS */
+  /* ── CONTROLS ── */
   .controls {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 20px;
+    margin-bottom: 16px;
     gap: 12px;
     flex-wrap: wrap;
   }
-
-  .controls-left { display: flex; gap: 10px; flex-wrap: wrap; }
+  .controls-left { display: flex; gap: 8px; flex-wrap: wrap; }
 
   .filter-btn {
     background: var(--surface);
     border: 1px solid var(--border);
     color: var(--muted);
     font-family: 'DM Mono', monospace;
-    font-size: 0.72rem;
-    padding: 8px 16px;
+    font-size: 0.7rem;
+    padding: 7px 14px;
     border-radius: 6px;
     cursor: pointer;
     text-transform: uppercase;
     letter-spacing: 1px;
     transition: all 0.2s;
   }
-
   .filter-btn:hover, .filter-btn.active {
     border-color: var(--accent);
     color: var(--text);
     background: rgba(79,143,255,0.08);
   }
-
   .filter-btn.active { color: var(--accent); }
 
   .btn-add {
@@ -167,18 +215,15 @@
     color: #fff;
     font-family: 'Syne', sans-serif;
     font-weight: 700;
-    font-size: 0.8rem;
-    padding: 10px 22px;
+    font-size: 0.78rem;
+    padding: 9px 20px;
     border-radius: 8px;
     cursor: pointer;
-    letter-spacing: 0.5px;
     transition: all 0.2s;
-    display: flex;
-    align-items: center;
-    gap: 8px;
+    display: flex; align-items: center; gap: 7px;
   }
-
   .btn-add:hover { background: #3a7aee; transform: translateY(-1px); }
+  .btn-add:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
 
   .btn-export {
     background: none;
@@ -186,49 +231,59 @@
     color: var(--green);
     font-family: 'Syne', sans-serif;
     font-weight: 700;
-    font-size: 0.8rem;
-    padding: 10px 22px;
+    font-size: 0.78rem;
+    padding: 9px 20px;
     border-radius: 8px;
     cursor: pointer;
     transition: all 0.2s;
-    display: flex;
-    align-items: center;
-    gap: 8px;
+    display: flex; align-items: center; gap: 7px;
   }
   .btn-export:hover { background: rgba(46,204,138,0.1); transform: translateY(-1px); }
 
-  .storage-note {
-    background: rgba(79,143,255,0.08);
-    border: 1px solid rgba(79,143,255,0.2);
-    border-radius: 8px;
-    padding: 10px 16px;
-    font-size: 0.72rem;
+  .btn-refresh {
+    background: none;
+    border: 1px solid var(--border);
     color: var(--muted);
-    margin-bottom: 20px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
+    font-family: 'DM Mono', monospace;
+    font-size: 0.7rem;
+    padding: 9px 14px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
   }
-  .storage-note span { color: var(--accent); font-weight: 600; }
+  .btn-refresh:hover { border-color: var(--accent); color: var(--accent); }
 
-  /* SEARCH */
   .search-box {
     background: var(--surface);
     border: 1px solid var(--border);
     color: var(--text);
     font-family: 'DM Mono', monospace;
-    font-size: 0.8rem;
-    padding: 9px 16px;
+    font-size: 0.78rem;
+    padding: 9px 14px;
     border-radius: 8px;
     outline: none;
-    width: 220px;
+    width: 200px;
     transition: border-color 0.2s;
   }
-
   .search-box:focus { border-color: var(--accent); }
   .search-box::placeholder { color: var(--muted); }
 
-  /* TABLE */
+  /* ── SP NOTE ── */
+  .sp-note {
+    background: rgba(46,204,138,0.06);
+    border: 1px solid rgba(46,204,138,0.18);
+    border-radius: 8px;
+    padding: 10px 16px;
+    font-size: 0.7rem;
+    color: var(--muted);
+    margin-bottom: 18px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .sp-note span { color: var(--green); font-weight: 600; }
+
+  /* ── TABLE ── */
   .table-wrapper {
     background: var(--surface);
     border: 1px solid var(--border);
@@ -237,18 +292,13 @@
   }
 
   table { width: 100%; border-collapse: collapse; }
-
-  thead {
-    background: var(--surface2);
-    border-bottom: 1px solid var(--border);
-  }
-
+  thead { background: var(--surface2); border-bottom: 1px solid var(--border); }
   th {
-    font-size: 0.65rem;
+    font-size: 0.63rem;
     text-transform: uppercase;
     letter-spacing: 2px;
     color: var(--muted);
-    padding: 14px 20px;
+    padding: 14px 18px;
     text-align: left;
     font-weight: 500;
   }
@@ -258,150 +308,102 @@
     transition: background 0.15s;
     animation: fadeIn 0.3s ease;
   }
-
   @keyframes fadeIn {
-    from { opacity: 0; transform: translateY(6px); }
-    to { opacity: 1; transform: translateY(0); }
+    from { opacity: 0; transform: translateY(5px); }
+    to   { opacity: 1; transform: translateY(0); }
   }
-
   tbody tr:last-child { border-bottom: none; }
   tbody tr:hover { background: var(--surface2); }
 
-  td {
-    padding: 16px 20px;
-    font-size: 0.82rem;
-    vertical-align: middle;
-  }
+  td { padding: 15px 18px; font-size: 0.8rem; vertical-align: middle; }
 
   .service-name {
     font-family: 'Syne', sans-serif;
     font-weight: 600;
-    font-size: 0.9rem;
+    font-size: 0.88rem;
     color: var(--text);
   }
+  .service-vendor { font-size: 0.7rem; color: var(--muted); margin-top: 3px; }
 
-  .service-vendor {
-    font-size: 0.72rem;
-    color: var(--muted);
-    margin-top: 3px;
-  }
-
-  /* TYPE BADGE */
   .type-badge {
-    font-size: 0.65rem;
+    font-size: 0.62rem;
     text-transform: uppercase;
     letter-spacing: 1px;
-    padding: 4px 10px;
+    padding: 4px 9px;
     border-radius: 4px;
     font-weight: 500;
     display: inline-block;
   }
-
-  .type-license { background: rgba(79,143,255,0.12); color: var(--blue); }
-  .type-amc { background: rgba(46,204,138,0.12); color: var(--green); }
+  .type-license      { background: rgba(79,143,255,0.12); color: var(--blue); }
+  .type-amc          { background: rgba(46,204,138,0.12); color: var(--green); }
   .type-subscription { background: rgba(245,200,66,0.12); color: var(--yellow); }
 
-  /* STATUS BADGE */
   .status-badge {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    font-size: 0.7rem;
+    font-size: 0.68rem;
     text-transform: uppercase;
     letter-spacing: 1px;
-    padding: 5px 12px;
+    padding: 5px 11px;
     border-radius: 20px;
     font-weight: 500;
   }
-
-  .status-dot {
-    width: 6px; height: 6px;
-    border-radius: 50%;
-    flex-shrink: 0;
-  }
-
-  .status-active { background: rgba(46,204,138,0.12); color: var(--green); }
-  .status-active .status-dot { background: var(--green); box-shadow: 0 0 6px var(--green); }
-
+  .status-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+  .status-active  { background: rgba(46,204,138,0.12); color: var(--green); }
+  .status-active  .status-dot { background: var(--green); box-shadow: 0 0 6px var(--green); }
   .status-warning { background: rgba(245,200,66,0.12); color: var(--yellow); }
   .status-warning .status-dot { background: var(--yellow); box-shadow: 0 0 6px var(--yellow); }
-
   .status-expired { background: rgba(255,79,106,0.12); color: var(--red); }
   .status-expired .status-dot { background: var(--red); box-shadow: 0 0 6px var(--red); }
 
-  /* DAYS LEFT */
-  .days-left {
-    font-family: 'Syne', sans-serif;
-    font-weight: 700;
-    font-size: 1rem;
-  }
-
-  .days-active { color: var(--green); }
+  .days-left { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 1rem; }
+  .days-active  { color: var(--green); }
   .days-warning { color: var(--yellow); }
   .days-expired { color: var(--red); }
+  .days-sub { font-size: 0.63rem; color: var(--muted); font-family: 'DM Mono', monospace; }
 
-  .days-sub { font-size: 0.65rem; color: var(--muted); font-family: 'DM Mono', monospace; font-weight: 400; }
-
-  /* PROGRESS BAR */
   .progress-bar {
-    height: 4px;
-    background: var(--border);
-    border-radius: 2px;
-    margin-top: 6px;
-    overflow: hidden;
-    width: 120px;
+    height: 4px; background: var(--border); border-radius: 2px;
+    margin-top: 5px; overflow: hidden; width: 110px;
   }
+  .progress-fill { height: 100%; border-radius: 2px; transition: width 0.5s ease; }
 
-  .progress-fill {
-    height: 100%;
-    border-radius: 2px;
-    transition: width 0.5s ease;
-  }
-
-  /* ACTION BUTTONS */
-  .action-btns { display: flex; gap: 8px; }
-
+  .action-btns { display: flex; gap: 7px; }
   .btn-edit, .btn-delete {
     background: none;
     border: 1px solid var(--border);
     font-family: 'DM Mono', monospace;
-    font-size: 0.7rem;
-    padding: 5px 12px;
+    font-size: 0.68rem;
+    padding: 5px 11px;
     border-radius: 5px;
     cursor: pointer;
     transition: all 0.2s;
     text-transform: uppercase;
     letter-spacing: 0.5px;
   }
-
-  .btn-edit { color: var(--blue); }
-  .btn-edit:hover { background: rgba(79,143,255,0.1); border-color: var(--blue); }
-
+  .btn-edit   { color: var(--blue); }
+  .btn-edit:hover   { background: rgba(79,143,255,0.1); border-color: var(--blue); }
   .btn-delete { color: var(--red); }
   .btn-delete:hover { background: rgba(255,79,106,0.1); border-color: var(--red); }
+  .btn-edit:disabled, .btn-delete:disabled { opacity: 0.3; cursor: not-allowed; }
 
-  /* EMPTY STATE */
-  .empty-state {
-    text-align: center;
-    padding: 80px 20px;
-    color: var(--muted);
-  }
-
-  .empty-icon { font-size: 3rem; margin-bottom: 16px; opacity: 0.4; }
+  /* ── EMPTY / LOADING ── */
+  .empty-state { text-align: center; padding: 80px 20px; color: var(--muted); }
+  .empty-icon  { font-size: 3rem; margin-bottom: 16px; opacity: 0.4; }
   .empty-title { font-family: 'Syne', sans-serif; font-size: 1.1rem; color: var(--text); margin-bottom: 8px; }
-  .empty-sub { font-size: 0.78rem; }
+  .empty-sub   { font-size: 0.75rem; }
 
-  /* MODAL */
+  /* ── MODAL ── */
   .modal-overlay {
     position: fixed; inset: 0;
-    background: rgba(0,0,0,0.7);
-    backdrop-filter: blur(4px);
+    background: rgba(0,0,0,0.72);
+    backdrop-filter: blur(5px);
     z-index: 1000;
     display: none;
     align-items: center;
     justify-content: center;
   }
-
   .modal-overlay.open { display: flex; }
 
   .modal {
@@ -413,92 +415,90 @@
     max-width: 520px;
     animation: modalIn 0.25s ease;
   }
-
   @keyframes modalIn {
     from { opacity: 0; transform: scale(0.95) translateY(10px); }
-    to { opacity: 1; transform: scale(1) translateY(0); }
+    to   { opacity: 1; transform: scale(1) translateY(0); }
   }
 
   .modal-title {
     font-family: 'Syne', sans-serif;
     font-weight: 800;
-    font-size: 1.3rem;
-    margin-bottom: 28px;
+    font-size: 1.25rem;
+    margin-bottom: 26px;
     color: var(--text);
   }
 
-  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
   .form-full { grid-column: 1 / -1; }
-
   .form-group { display: flex; flex-direction: column; gap: 6px; }
-
-  .form-label {
-    font-size: 0.65rem;
-    text-transform: uppercase;
-    letter-spacing: 2px;
-    color: var(--muted);
-  }
-
+  .form-label { font-size: 0.63rem; text-transform: uppercase; letter-spacing: 2px; color: var(--muted); }
   .form-input, .form-select {
     background: var(--surface2);
     border: 1px solid var(--border);
     color: var(--text);
     font-family: 'DM Mono', monospace;
-    font-size: 0.82rem;
-    padding: 10px 14px;
+    font-size: 0.8rem;
+    padding: 10px 13px;
     border-radius: 8px;
     outline: none;
     transition: border-color 0.2s;
     width: 100%;
   }
-
   .form-input:focus, .form-select:focus { border-color: var(--accent); }
   .form-select option { background: var(--surface2); }
 
-  .modal-actions {
-    display: flex;
-    gap: 12px;
-    margin-top: 28px;
-    justify-content: flex-end;
-  }
-
+  .modal-actions { display: flex; gap: 10px; margin-top: 26px; justify-content: flex-end; }
   .btn-cancel {
-    background: none;
-    border: 1px solid var(--border);
-    color: var(--muted);
-    font-family: 'DM Mono', monospace;
-    font-size: 0.78rem;
-    padding: 10px 20px;
-    border-radius: 8px;
-    cursor: pointer;
-    transition: all 0.2s;
+    background: none; border: 1px solid var(--border); color: var(--muted);
+    font-family: 'DM Mono', monospace; font-size: 0.76rem;
+    padding: 10px 18px; border-radius: 8px; cursor: pointer; transition: all 0.2s;
   }
-
   .btn-cancel:hover { border-color: var(--text); color: var(--text); }
-
   .btn-save {
-    background: var(--accent);
-    border: none;
-    color: #fff;
-    font-family: 'Syne', sans-serif;
-    font-weight: 700;
-    font-size: 0.82rem;
-    padding: 10px 24px;
-    border-radius: 8px;
-    cursor: pointer;
-    transition: all 0.2s;
+    background: var(--accent); border: none; color: #fff;
+    font-family: 'Syne', sans-serif; font-weight: 700; font-size: 0.8rem;
+    padding: 10px 22px; border-radius: 8px; cursor: pointer; transition: all 0.2s;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .btn-save:hover { background: #3a7aee; }
+  .btn-save:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* ── SIGN-IN SCREEN ── */
+  #signInScreen {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: calc(100vh - 130px);
+    gap: 20px;
+    text-align: center;
+    padding: 40px;
+  }
+  .signin-icon { font-size: 3.5rem; margin-bottom: 8px; }
+  .signin-title { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 1.6rem; color: var(--text); }
+  .signin-sub { font-size: 0.78rem; color: var(--muted); max-width: 360px; line-height: 1.7; }
+  .signin-btn {
+    background: var(--accent); color: #fff; border: none;
+    font-family: 'Syne', sans-serif; font-weight: 700; font-size: 0.9rem;
+    padding: 14px 32px; border-radius: 10px; cursor: pointer;
+    transition: all 0.2s; display: flex; align-items: center; gap: 10px; margin-top: 10px;
+  }
+  .signin-btn:hover { background: #3a7aee; transform: translateY(-2px); box-shadow: 0 8px 24px rgba(79,143,255,0.3); }
+  .signin-info {
+    font-size: 0.68rem; color: var(--muted);
+    border: 1px solid var(--border);
+    border-radius: 8px; padding: 12px 20px;
+    max-width: 400px; line-height: 1.6;
   }
 
-  .btn-save:hover { background: #3a7aee; }
-
-  /* RESPONSIVE */
+  /* ── RESPONSIVE ── */
   @media (max-width: 900px) {
     main { padding: 20px; }
+    header { padding: 14px 20px; }
+    #statusBar { padding: 10px 20px; }
     .summary-grid { grid-template-columns: repeat(2, 1fr); }
-    header { padding: 16px 20px; }
     .form-grid { grid-template-columns: 1fr; }
   }
-
   @media (max-width: 600px) {
     .summary-grid { grid-template-columns: 1fr 1fr; }
     table { display: block; overflow-x: auto; }
@@ -507,34 +507,61 @@
 </head>
 <body>
 
+<!-- ══ HEADER ══ -->
 <header>
   <div class="logo">Service<span>Track</span></div>
   <div class="header-right">
     <span class="today-date" id="todayDate"></span>
+    <div class="user-pill" id="userPill" style="display:none">
+      <div class="user-avatar" id="userAvatar"></div>
+      <span id="userName"></span>
+    </div>
+    <button id="authBtn" class="sign-in" onclick="handleAuth()">🔐 Sign In</button>
   </div>
 </header>
 
+<!-- ══ STATUS BAR ══ -->
+<div id="statusBar" class="hidden"></div>
+
+<!-- ══ SIGN-IN SCREEN ══ -->
+<div id="signInScreen">
+  <div class="signin-icon">🔒</div>
+  <div class="signin-title">Sign in to continue</div>
+  <div class="signin-sub">ServiceTrack uses your Microsoft 365 account to securely read and write data to the Alfanar SharePoint list.</div>
+  <button class="signin-btn" onclick="handleAuth()">
+    <svg width="18" height="18" viewBox="0 0 21 21" fill="none"><rect x="1" y="1" width="9" height="9" fill="#f25022"/><rect x="11" y="1" width="9" height="9" fill="#7fba00"/><rect x="1" y="11" width="9" height="9" fill="#00a4ef"/><rect x="11" y="11" width="9" height="9" fill="#ffb900"/></svg>
+    Sign in with Microsoft 365
+  </button>
+  <div class="signin-info">
+    🏢 Connected to: <strong style="color:var(--text)">alfanar01.sharepoint.com</strong><br>
+    📋 List: <strong style="color:var(--text)">ServiceTracker</strong><br>
+    🔐 Uses your existing M365 permissions — no extra setup needed.
+  </div>
+</div>
+
+<!-- ══ APP (hidden until signed in) ══ -->
+<div id="appContent" style="display:none">
 <main>
   <!-- SUMMARY CARDS -->
   <div class="summary-grid">
     <div class="summary-card total">
       <div class="summary-label">Total Services</div>
-      <div class="summary-number" id="totalCount">0</div>
+      <div class="summary-number" id="totalCount">—</div>
       <div class="summary-sub">All tracked services</div>
     </div>
     <div class="summary-card active">
       <div class="summary-label">Active</div>
-      <div class="summary-number" id="activeCount">0</div>
+      <div class="summary-number" id="activeCount">—</div>
       <div class="summary-sub">More than 30 days left</div>
     </div>
     <div class="summary-card warning">
       <div class="summary-label">Expiring Soon</div>
-      <div class="summary-number" id="warningCount">0</div>
+      <div class="summary-number" id="warningCount">—</div>
       <div class="summary-sub">Within 30 days</div>
     </div>
     <div class="summary-card expired">
       <div class="summary-label">Expired</div>
-      <div class="summary-number" id="expiredCount">0</div>
+      <div class="summary-number" id="expiredCount">—</div>
       <div class="summary-sub">Action required</div>
     </div>
   </div>
@@ -542,24 +569,25 @@
   <!-- CONTROLS -->
   <div class="controls">
     <div class="controls-left">
-      <button class="filter-btn active" onclick="setFilter('all', this)">All</button>
-      <button class="filter-btn" onclick="setFilter('active', this)">Active</button>
-      <button class="filter-btn" onclick="setFilter('warning', this)">Expiring Soon</button>
-      <button class="filter-btn" onclick="setFilter('expired', this)">Expired</button>
-      <button class="filter-btn" onclick="setFilter('license', this)">Licenses</button>
-      <button class="filter-btn" onclick="setFilter('amc', this)">AMC</button>
-      <button class="filter-btn" onclick="setFilter('subscription', this)">Subscriptions</button>
+      <button class="filter-btn active" onclick="setFilter('all',this)">All</button>
+      <button class="filter-btn" onclick="setFilter('active',this)">Active</button>
+      <button class="filter-btn" onclick="setFilter('warning',this)">Expiring Soon</button>
+      <button class="filter-btn" onclick="setFilter('expired',this)">Expired</button>
+      <button class="filter-btn" onclick="setFilter('license',this)">Licenses</button>
+      <button class="filter-btn" onclick="setFilter('amc',this)">AMC</button>
+      <button class="filter-btn" onclick="setFilter('subscription',this)">Subscriptions</button>
     </div>
-    <div style="display:flex;gap:10px;align-items:center;">
-      <input type="text" class="search-box" placeholder="Search services..." id="searchBox" oninput="renderTable()">
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+      <input type="text" class="search-box" placeholder="Search services…" id="searchBox" oninput="renderTable()">
+      <button class="btn-refresh" onclick="loadFromSharePoint()" title="Refresh from SharePoint">↻ Refresh</button>
       <button class="btn-export" onclick="exportToExcel()">⬇ Export Excel</button>
-      <button class="btn-add" onclick="openModal()">+ Add Service</button>
+      <button class="btn-add" id="btnAdd" onclick="openModal()">+ Add Service</button>
     </div>
   </div>
 
-  <!-- STORAGE NOTE -->
-  <div class="storage-note">
-    💾 <span>Data Storage:</span> Your data is saved in this browser only (localStorage). Use the Export button to back up your data to Excel.
+  <!-- SP NOTE -->
+  <div class="sp-note">
+    ☁️ <span>SharePoint Connected:</span> Data is synced with alfanar01.sharepoint.com · ServiceTracker list. All changes save directly to SharePoint.
   </div>
 
   <!-- TABLE -->
@@ -578,15 +606,16 @@
       </thead>
       <tbody id="tableBody"></tbody>
     </table>
-    <div id="emptyState" class="empty-state" style="display:none;">
+    <div id="emptyState" class="empty-state" style="display:none">
       <div class="empty-icon">📋</div>
-      <div class="empty-title">No services found</div>
-      <div class="empty-sub">Add your first service contract to start tracking</div>
+      <div class="empty-title" id="emptyTitle">No services found</div>
+      <div class="empty-sub" id="emptySub">Add your first service to start tracking</div>
     </div>
   </div>
 </main>
+</div>
 
-<!-- MODAL -->
+<!-- ══ MODAL ══ -->
 <div class="modal-overlay" id="modalOverlay">
   <div class="modal">
     <div class="modal-title" id="modalTitle">Add Service</div>
@@ -621,222 +650,612 @@
       </div>
       <div class="form-group form-full">
         <label class="form-label">Notes</label>
-        <input type="text" class="form-input" id="f-notes" placeholder="Any additional notes...">
+        <input type="text" class="form-input" id="f-notes" placeholder="Any additional notes…">
       </div>
     </div>
     <div class="modal-actions">
       <button class="btn-cancel" onclick="closeModal()">Cancel</button>
-      <button class="btn-save" onclick="saveService()">Save Service</button>
+      <button class="btn-save" id="btnSave" onclick="saveService()">
+        <span id="saveLabel">Save Service</span>
+      </button>
     </div>
   </div>
 </div>
 
 <script>
-  // ── State ──────────────────────────────────────────────
-  let services = JSON.parse(localStorage.getItem('serviceTracker') || '[]');
-  let editingId = null;
-  let currentFilter = 'all';
+// ══════════════════════════════════════════════════════
+//  CONFIG — update CLIENT_ID and TENANT_ID after you
+//  register an Azure App (see instructions below).
+// ══════════════════════════════════════════════════════
+const CONFIG = {
+  // ─── Azure App Registration ───────────────────────
+  // 1. Go to https://portal.azure.com → Azure Active Directory → App registrations → New registration
+  // 2. Name: "ServiceTrack", Redirect URI: Single-page application → paste this file's URL (or http://localhost for local testing)
+  // 3. After creation, copy the Application (client) ID below
+  // 4. Under API permissions → Add permission → SharePoint → Delegated → AllSites.Write → Grant admin consent
+  CLIENT_ID: '3aa630e1-8d2e-43ea-a928-5b39c30becad',
+  TENANT_ID: '91742063-fccc-4cba-b34b-69be54e484e8',
 
-  // Sample data if empty
-  if (services.length === 0) {
-    services = [
-      { id: 1, name: 'Microsoft 365', vendor: 'Microsoft', type: 'subscription', start: '2024-01-01', expiry: '2025-01-01', cost: 'AED 12,000', notes: 'E3 Plan - 50 users' },
-      { id: 2, name: 'SonicWall TZ470 Support', vendor: 'SonicWall', type: 'amc', start: '2024-06-01', expiry: '2026-03-25', cost: 'AED 3,500', notes: '' },
-      { id: 3, name: 'BioTime Enterprise License', vendor: 'ZKTeco', type: 'license', start: '2023-01-01', expiry: '2025-04-10', cost: 'AED 8,000', notes: '200 employees' },
-      { id: 4, name: 'Kaspersky Endpoint', vendor: 'Kaspersky', type: 'subscription', start: '2024-03-01', expiry: '2025-03-20', cost: 'AED 2,200', notes: '30 devices' },
-      { id: 5, name: 'Adobe Creative Cloud', vendor: 'Adobe', type: 'subscription', start: '2024-01-15', expiry: '2024-12-31', cost: 'AED 6,000', notes: '' },
-    ];
-    save();
+  // ─── SharePoint ───────────────────────────────────
+  SITE_URL:  'https://alfanar01.sharepoint.com/sites/AssetManagement',
+  LIST_NAME: 'ServiceTracker',
+
+  // ─── Column mapping (internal SP names → app fields) ─
+  // If your SP columns have different internal names, adjust here.
+  COLS: {
+    name:   'Title',
+    vendor: 'Vendor',
+    type:   'Type',
+    start:  'StartDate',
+    expiry: 'ExpiryDate',
+    cost:   'Cost',
+    notes:  'Notes',
+  }
+};
+
+// ══════════════════════════════════════════════════════
+//  MSAL SETUP
+// ══════════════════════════════════════════════════════
+const msalConfig = {
+  auth: {
+    clientId: CONFIG.CLIENT_ID,
+    authority: `https://login.microsoftonline.com/${CONFIG.TENANT_ID}`,
+    redirectUri: 'https://farz47.github.io/service-tracker/',
+  },
+  cache: { cacheLocation: 'sessionStorage', storeAuthStateInCookie: false }
+};
+
+const loginRequest = {
+  scopes: [
+    'User.Read',
+    `${CONFIG.SITE_URL}/.default`
+  ]
+};
+
+// Fallback scopes if site-specific doesn't work
+const loginRequestFallback = {
+  scopes: ['User.Read', 'Sites.ReadWrite.All']
+};
+
+let msalInstance = null;
+let currentAccount = null;
+let accessToken = null;
+
+// ── State ──
+let services = [];
+let editingSpId = null;
+let currentFilter = 'all';
+let isSaving = false;
+
+// ══════════════════════════════════════════════════════
+//  INIT
+// ══════════════════════════════════════════════════════
+window.addEventListener('DOMContentLoaded', async () => {
+  document.getElementById('todayDate').textContent =
+    new Date().toLocaleDateString('en-GB', { weekday:'short', day:'2-digit', month:'short', year:'numeric' });
+
+  // Check if CLIENT_ID is configured
+  if (CONFIG.CLIENT_ID === 'YOUR_CLIENT_ID_HERE') {
+    showStatus('⚙️ Azure App not configured yet. See setup instructions in the HTML comments.', 'warning');
+    showDemoMode();
+    return;
   }
 
-  // ── Helpers ────────────────────────────────────────────
-  function save() {
-    localStorage.setItem('serviceTracker', JSON.stringify(services));
+  msalInstance = new msal.PublicClientApplication(msalConfig);
+  await msalInstance.initialize();
+
+  // Handle redirect response
+  try {
+    const resp = await msalInstance.handleRedirectPromise();
+    if (resp) { await onSignedIn(resp); return; }
+  } catch(e) { /* no redirect */ }
+
+  // Check existing session
+  const accounts = msalInstance.getAllAccounts();
+  if (accounts.length > 0) {
+    currentAccount = accounts[0];
+    await silentSignIn();
   }
+});
 
-  function daysLeft(expiryStr) {
-    const today = new Date(); today.setHours(0,0,0,0);
-    const exp = new Date(expiryStr); exp.setHours(0,0,0,0);
-    return Math.floor((exp - today) / (1000 * 60 * 60 * 24));
-  }
-
-  function getStatus(days) {
-    if (days < 0) return 'expired';
-    if (days <= 30) return 'warning';
-    return 'active';
-  }
-
-  function totalDays(start, expiry) {
-    const s = new Date(start); const e = new Date(expiry);
-    return Math.max(1, Math.floor((e - s) / (1000 * 60 * 60 * 24)));
-  }
-
-  function progressPct(start, expiry) {
-    const total = totalDays(start, expiry);
-    const elapsed = totalDays(start, new Date().toISOString().split('T')[0]);
-    return Math.min(100, Math.max(0, Math.round((elapsed / total) * 100)));
-  }
-
-  function fmt(dateStr) {
-    if (!dateStr) return '—';
-    const d = new Date(dateStr);
-    return d.toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' });
-  }
-
-  function uid() { return Date.now() + Math.random(); }
-
-  // ── Render ─────────────────────────────────────────────
-  function renderTable() {
-    const search = document.getElementById('searchBox').value.toLowerCase();
-    let filtered = services.filter(s => {
-      const days = daysLeft(s.expiry);
-      const status = getStatus(days);
-      const matchFilter =
-        currentFilter === 'all' ? true :
-        currentFilter === 'active' ? status === 'active' :
-        currentFilter === 'warning' ? status === 'warning' :
-        currentFilter === 'expired' ? status === 'expired' :
-        s.type === currentFilter;
-      const matchSearch = !search ||
-        s.name.toLowerCase().includes(search) ||
-        (s.vendor || '').toLowerCase().includes(search);
-      return matchFilter && matchSearch;
-    });
-
-    // Sort: expired first, then warning, then active; by days ascending
-    filtered.sort((a, b) => daysLeft(a.expiry) - daysLeft(b.expiry));
-
-    const tbody = document.getElementById('tableBody');
-    const empty = document.getElementById('emptyState');
-
-    if (filtered.length === 0) {
-      tbody.innerHTML = '';
-      empty.style.display = 'block';
-    } else {
-      empty.style.display = 'none';
-      tbody.innerHTML = filtered.map(s => {
-        const days = daysLeft(s.expiry);
-        const status = getStatus(days);
-        const pct = progressPct(s.start, s.expiry);
-        const statusClass = `status-${status}`;
-        const statusLabel = status === 'active' ? 'Active' : status === 'warning' ? 'Expiring Soon' : 'Expired';
-        const daysClass = `days-${status}`;
-        const daysLabel = days < 0 ? `${Math.abs(days)} days ago` : days === 0 ? 'Today!' : `${days} days`;
-        const progressColor = status === 'active' ? '#2ecc8a' : status === 'warning' ? '#f5c842' : '#ff4f6a';
-        const typeLabel = s.type === 'license' ? 'License' : s.type === 'amc' ? 'AMC' : 'Subscription';
-        return `
-          <tr>
-            <td>
-              <div class="service-name">${s.name}</div>
-              ${s.vendor ? `<div class="service-vendor">${s.vendor}${s.cost ? ' · ' + s.cost : ''}</div>` : ''}
-              ${s.notes ? `<div class="service-vendor" style="font-style:italic">${s.notes}</div>` : ''}
-            </td>
-            <td><span class="type-badge type-${s.type}">${typeLabel}</span></td>
-            <td style="color:var(--muted);font-size:0.78rem">${fmt(s.start)}</td>
-            <td style="font-size:0.78rem">${fmt(s.expiry)}</td>
-            <td>
-              <div class="${daysClass} days-left">${Math.abs(days)}</div>
-              <div class="days-sub">${daysLabel}</div>
-              <div class="progress-bar">
-                <div class="progress-fill" style="width:${pct}%;background:${progressColor}"></div>
-              </div>
-            </td>
-            <td>
-              <span class="status-badge ${statusClass}">
-                <span class="status-dot"></span>${statusLabel}
-              </span>
-            </td>
-            <td>
-              <div class="action-btns">
-                <button class="btn-edit" onclick="editService(${s.id})">Edit</button>
-                <button class="btn-delete" onclick="deleteService(${s.id})">Delete</button>
-              </div>
-            </td>
-          </tr>`;
-      }).join('');
+// ══════════════════════════════════════════════════════
+//  AUTH
+// ══════════════════════════════════════════════════════
+async function handleAuth() {
+  if (currentAccount) { signOut(); return; }
+  if (!msalInstance) { showStatus('App not configured. See setup instructions.', 'error'); return; }
+  showStatus('Opening Microsoft sign-in…', 'info', true);
+  try {
+    const resp = await msalInstance.loginPopup(loginRequest);
+    await onSignedIn(resp);
+  } catch(e) {
+    // Try fallback scopes
+    try {
+      const resp = await msalInstance.loginPopup(loginRequestFallback);
+      await onSignedIn(resp);
+    } catch(e2) {
+      showStatus('Sign-in failed: ' + e2.message, 'error');
     }
-
-    // Update summary
-    const all = services;
-    document.getElementById('totalCount').textContent = all.length;
-    document.getElementById('activeCount').textContent = all.filter(s => getStatus(daysLeft(s.expiry)) === 'active').length;
-    document.getElementById('warningCount').textContent = all.filter(s => getStatus(daysLeft(s.expiry)) === 'warning').length;
-    document.getElementById('expiredCount').textContent = all.filter(s => getStatus(daysLeft(s.expiry)) === 'expired').length;
   }
+}
 
-  // ── Filter ─────────────────────────────────────────────
-  function setFilter(f, btn) {
-    currentFilter = f;
-    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
+async function silentSignIn() {
+  try {
+    showStatus('Restoring session…', 'info', true);
+    const resp = await msalInstance.acquireTokenSilent({
+      ...loginRequest,
+      account: currentAccount
+    });
+    await onSignedIn(resp);
+  } catch(e) {
+    try {
+      const resp = await msalInstance.acquireTokenSilent({
+        ...loginRequestFallback,
+        account: currentAccount
+      });
+      await onSignedIn(resp);
+    } catch(e2) {
+      hideStatus();
+    }
+  }
+}
+
+async function onSignedIn(resp) {
+  currentAccount = resp.account;
+  accessToken = resp.accessToken;
+
+  // Update UI
+  const name = currentAccount.name || currentAccount.username;
+  const initials = name.split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase();
+  document.getElementById('userAvatar').textContent = initials;
+  document.getElementById('userName').textContent = name.split(' ')[0];
+  document.getElementById('userPill').style.display = 'flex';
+  document.getElementById('authBtn').textContent = 'Sign Out';
+  document.getElementById('authBtn').className = 'sign-out';
+  document.getElementById('signInScreen').style.display = 'none';
+  document.getElementById('appContent').style.display = 'block';
+
+  await loadFromSharePoint();
+}
+
+function signOut() {
+  if (msalInstance && currentAccount) {
+    msalInstance.logoutPopup({ account: currentAccount });
+  }
+  currentAccount = null; accessToken = null; services = [];
+  document.getElementById('userPill').style.display = 'none';
+  document.getElementById('authBtn').textContent = '🔐 Sign In';
+  document.getElementById('authBtn').className = 'sign-in';
+  document.getElementById('signInScreen').style.display = 'flex';
+  document.getElementById('appContent').style.display = 'none';
+  hideStatus();
+}
+
+async function getToken() {
+  if (!msalInstance || !currentAccount) return null;
+  try {
+    const resp = await msalInstance.acquireTokenSilent({ ...loginRequest, account: currentAccount });
+    return resp.accessToken;
+  } catch {
+    try {
+      const resp = await msalInstance.acquireTokenSilent({ ...loginRequestFallback, account: currentAccount });
+      return resp.accessToken;
+    } catch {
+      try {
+        const resp = await msalInstance.acquireTokenPopup(loginRequestFallback);
+        return resp.accessToken;
+      } catch { return null; }
+    }
+  }
+}
+
+// ══════════════════════════════════════════════════════
+//  SHAREPOINT API
+// ══════════════════════════════════════════════════════
+function spApiBase() {
+  return `https://graph.microsoft.com/v1.0/sites/alfanar01.sharepoint.com:/sites/AssetManagement:/lists/${CONFIG.LIST_NAME}/items`;
+}
+
+async function spFetch(url, options = {}) {
+  const token = await getToken();
+  if (!token) throw new Error('Not authenticated');
+  const res = await fetch(url, {
+    ...options,
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      'Prefer': 'HonorNonIndexedQueriesWarningMayFailRandomly',
+      ...(options.headers || {})
+    }
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err?.error?.message || `HTTP ${res.status}`);
+  }
+  return res.status === 204 ? null : res.json();
+}
+
+// Map SharePoint item → app object
+function spItemToService(item) {
+  const f = item.fields;
+  return {
+    spId:   item.id,
+    name:   f[CONFIG.COLS.name]   || '',
+    vendor: f[CONFIG.COLS.vendor] || '',
+    type:   (f[CONFIG.COLS.type]  || 'license').toLowerCase(),
+    start:  f[CONFIG.COLS.start]  ? f[CONFIG.COLS.start].split('T')[0] : '',
+    expiry: f[CONFIG.COLS.expiry] ? f[CONFIG.COLS.expiry].split('T')[0] : '',
+    cost:   f[CONFIG.COLS.cost]   || '',
+    notes:  f[CONFIG.COLS.notes]  || '',
+  };
+}
+
+// Map app object → SharePoint fields
+function serviceToSpFields(data) {
+  return {
+    [CONFIG.COLS.name]:   data.name,
+    [CONFIG.COLS.vendor]: data.vendor,
+    [CONFIG.COLS.type]:   data.type,
+    [CONFIG.COLS.start]:  data.start  ? data.start  + 'T00:00:00Z' : null,
+    [CONFIG.COLS.expiry]: data.expiry ? data.expiry + 'T00:00:00Z' : null,
+    [CONFIG.COLS.cost]:   data.cost,
+    [CONFIG.COLS.notes]:  data.notes,
+  };
+}
+
+async function loadFromSharePoint() {
+  showStatus('Loading from SharePoint…', 'info', true);
+  try {
+    const url = `${spApiBase()}?expand=fields&$top=999`;
+    const data = await spFetch(url);
+    services = (data.value || []).map(spItemToService);
+    renderTable();
+    showStatus(`✓ Loaded ${services.length} services from SharePoint`, 'success');
+    setTimeout(hideStatus, 3000);
+  } catch(e) {
+    showStatus('Error loading from SharePoint: ' + e.message, 'error');
     renderTable();
   }
+}
 
-  // ── Modal ──────────────────────────────────────────────
-  function openModal(id = null) {
-    editingId = id;
-    document.getElementById('modalTitle').textContent = id ? 'Edit Service' : 'Add Service';
-    if (id) {
-      const s = services.find(x => x.id === id);
-      document.getElementById('f-name').value = s.name;
-      document.getElementById('f-vendor').value = s.vendor || '';
-      document.getElementById('f-type').value = s.type;
-      document.getElementById('f-cost').value = s.cost || '';
-      document.getElementById('f-start').value = s.start;
-      document.getElementById('f-expiry').value = s.expiry;
-      document.getElementById('f-notes').value = s.notes || '';
-    } else {
-      ['f-name','f-vendor','f-cost','f-start','f-expiry','f-notes'].forEach(id => document.getElementById(id).value = '');
-      document.getElementById('f-type').value = 'license';
-    }
-    document.getElementById('modalOverlay').classList.add('open');
-  }
+async function createInSharePoint(data) {
+  const fields = serviceToSpFields(data);
+  const result = await spFetch(spApiBase(), {
+    method: 'POST',
+    body: JSON.stringify({ fields })
+  });
+  return result.id;
+}
 
-  function closeModal() {
-    document.getElementById('modalOverlay').classList.remove('open');
-    editingId = null;
-  }
+async function updateInSharePoint(spId, data) {
+  const fields = serviceToSpFields(data);
+  await spFetch(`${spApiBase()}/${spId}/fields`, {
+    method: 'PATCH',
+    body: JSON.stringify(fields)
+  });
+}
 
-  function editService(id) { openModal(id); }
+async function deleteFromSharePoint(spId) {
+  await spFetch(`${spApiBase()}/${spId}`, { method: 'DELETE' });
+}
 
-  function deleteService(id) {
-    if (confirm('Delete this service?')) {
-      services = services.filter(s => s.id !== id);
-      save(); renderTable();
-    }
-  }
+// ══════════════════════════════════════════════════════
+//  DEMO MODE (when CLIENT_ID not yet set)
+// ══════════════════════════════════════════════════════
+function showDemoMode() {
+  document.getElementById('signInScreen').style.display = 'none';
+  document.getElementById('appContent').style.display = 'block';
+  document.getElementById('authBtn').textContent = '⚙️ Config Needed';
+  document.getElementById('authBtn').className = 'sign-out';
 
-  function saveService() {
-    const name = document.getElementById('f-name').value.trim();
-    const expiry = document.getElementById('f-expiry').value;
-    const start = document.getElementById('f-start').value;
-    if (!name || !expiry || !start) { alert('Please fill in Name, Start Date and Expiry Date.'); return; }
-    const data = {
-      name,
-      vendor: document.getElementById('f-vendor').value.trim(),
-      type: document.getElementById('f-type').value,
-      cost: document.getElementById('f-cost').value.trim(),
-      start,
-      expiry,
-      notes: document.getElementById('f-notes').value.trim(),
-    };
-    if (editingId) {
-      const idx = services.findIndex(s => s.id === editingId);
-      services[idx] = { ...services[idx], ...data };
-    } else {
-      services.push({ id: uid(), ...data });
-    }
-    save(); closeModal(); renderTable();
-  }
+  services = [
+    { spId:'demo1', name:'Microsoft 365', vendor:'Microsoft', type:'subscription', start:'2024-01-01', expiry:'2025-06-01', cost:'AED 12,000', notes:'E3 Plan - 50 users' },
+    { spId:'demo2', name:'SonicWall TZ470 Support', vendor:'SonicWall', type:'amc', start:'2024-06-01', expiry:'2026-03-25', cost:'AED 3,500', notes:'' },
+    { spId:'demo3', name:'BioTime Enterprise License', vendor:'ZKTeco', type:'license', start:'2023-01-01', expiry:'2025-04-10', cost:'AED 8,000', notes:'200 employees' },
+    { spId:'demo4', name:'Kaspersky Endpoint', vendor:'Kaspersky', type:'subscription', start:'2024-03-01', expiry:'2025-03-20', cost:'AED 2,200', notes:'30 devices' },
+    { spId:'demo5', name:'Adobe Creative Cloud', vendor:'Adobe', type:'subscription', start:'2024-01-15', expiry:'2024-12-31', cost:'AED 6,000', notes:'' },
+  ];
+  renderTable();
+}
 
-  // Close modal on overlay click
-  document.getElementById('modalOverlay').addEventListener('click', function(e) {
-    if (e.target === this) closeModal();
+// ══════════════════════════════════════════════════════
+//  HELPERS
+// ══════════════════════════════════════════════════════
+function daysLeft(expiryStr) {
+  const today = new Date(); today.setHours(0,0,0,0);
+  const exp = new Date(expiryStr); exp.setHours(0,0,0,0);
+  return Math.floor((exp - today) / 86400000);
+}
+function getStatus(days) {
+  if (days < 0) return 'expired';
+  if (days <= 30) return 'warning';
+  return 'active';
+}
+function totalDays(s, e) {
+  return Math.max(1, Math.floor((new Date(e) - new Date(s)) / 86400000));
+}
+function progressPct(start, expiry) {
+  const total = totalDays(start, expiry);
+  const elapsed = totalDays(start, new Date().toISOString().split('T')[0]);
+  return Math.min(100, Math.max(0, Math.round((elapsed / total) * 100)));
+}
+function fmt(d) {
+  if (!d) return '—';
+  return new Date(d).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' });
+}
+
+// ══════════════════════════════════════════════════════
+//  STATUS BAR
+// ══════════════════════════════════════════════════════
+function showStatus(msg, type = 'info', spinner = false) {
+  const bar = document.getElementById('statusBar');
+  bar.className = type;
+  bar.innerHTML = (spinner ? '<div class="spinner"></div>' : '') + msg;
+}
+function hideStatus() {
+  document.getElementById('statusBar').className = 'hidden';
+}
+
+// ══════════════════════════════════════════════════════
+//  RENDER
+// ══════════════════════════════════════════════════════
+function renderTable() {
+  const search = document.getElementById('searchBox').value.toLowerCase();
+  let filtered = services.filter(s => {
+    const days = daysLeft(s.expiry);
+    const status = getStatus(days);
+    const matchFilter =
+      currentFilter === 'all'          ? true :
+      currentFilter === 'active'       ? status === 'active' :
+      currentFilter === 'warning'      ? status === 'warning' :
+      currentFilter === 'expired'      ? status === 'expired' :
+      s.type === currentFilter;
+    const matchSearch = !search ||
+      s.name.toLowerCase().includes(search) ||
+      (s.vendor || '').toLowerCase().includes(search);
+    return matchFilter && matchSearch;
   });
 
-  // ── Init ───────────────────────────────────────────────
-  document.getElementById('todayDate').textContent = new Date().toLocaleDateString('en-GB', { weekday:'short', day:'2-digit', month:'short', year:'numeric' });
+  filtered.sort((a, b) => daysLeft(a.expiry) - daysLeft(b.expiry));
+
+  const tbody = document.getElementById('tableBody');
+  const empty = document.getElementById('emptyState');
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = '';
+    empty.style.display = 'block';
+  } else {
+    empty.style.display = 'none';
+    tbody.innerHTML = filtered.map(s => {
+      const days   = daysLeft(s.expiry);
+      const status = getStatus(days);
+      const pct    = progressPct(s.start, s.expiry);
+      const statusLabel = status === 'active' ? 'Active' : status === 'warning' ? 'Expiring Soon' : 'Expired';
+      const daysLabel   = days < 0 ? `${Math.abs(days)} days ago` : days === 0 ? 'Today!' : `${days} days`;
+      const progressColor = status === 'active' ? '#2ecc8a' : status === 'warning' ? '#f5c842' : '#ff4f6a';
+      const typeLabel = s.type === 'license' ? 'License' : s.type === 'amc' ? 'AMC' : 'Subscription';
+      return `
+        <tr>
+          <td>
+            <div class="service-name">${esc(s.name)}</div>
+            ${s.vendor ? `<div class="service-vendor">${esc(s.vendor)}${s.cost ? ' · ' + esc(s.cost) : ''}</div>` : ''}
+            ${s.notes  ? `<div class="service-vendor" style="font-style:italic">${esc(s.notes)}</div>` : ''}
+          </td>
+          <td><span class="type-badge type-${s.type}">${typeLabel}</span></td>
+          <td style="color:var(--muted);font-size:0.76rem">${fmt(s.start)}</td>
+          <td style="font-size:0.76rem">${fmt(s.expiry)}</td>
+          <td>
+            <div class="days-${status} days-left">${Math.abs(days)}</div>
+            <div class="days-sub">${daysLabel}</div>
+            <div class="progress-bar">
+              <div class="progress-fill" style="width:${pct}%;background:${progressColor}"></div>
+            </div>
+          </td>
+          <td>
+            <span class="status-badge status-${status}">
+              <span class="status-dot"></span>${statusLabel}
+            </span>
+          </td>
+          <td>
+            <div class="action-btns">
+              <button class="btn-edit"   onclick="editService('${s.spId}')">Edit</button>
+              <button class="btn-delete" onclick="deleteService('${s.spId}')">Delete</button>
+            </div>
+          </td>
+        </tr>`;
+    }).join('');
+  }
+
+  // Summary counts (always based on full list)
+  document.getElementById('totalCount').textContent   = services.length;
+  document.getElementById('activeCount').textContent  = services.filter(s => getStatus(daysLeft(s.expiry)) === 'active').length;
+  document.getElementById('warningCount').textContent = services.filter(s => getStatus(daysLeft(s.expiry)) === 'warning').length;
+  document.getElementById('expiredCount').textContent = services.filter(s => getStatus(daysLeft(s.expiry)) === 'expired').length;
+}
+
+function esc(str) {
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ══════════════════════════════════════════════════════
+//  FILTER
+// ══════════════════════════════════════════════════════
+function setFilter(f, btn) {
+  currentFilter = f;
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
   renderTable();
+}
+
+// ══════════════════════════════════════════════════════
+//  MODAL
+// ══════════════════════════════════════════════════════
+function openModal(spId = null) {
+  editingSpId = spId;
+  document.getElementById('modalTitle').textContent = spId ? 'Edit Service' : 'Add Service';
+  if (spId) {
+    const s = services.find(x => x.spId === spId);
+    document.getElementById('f-name').value   = s.name;
+    document.getElementById('f-vendor').value = s.vendor || '';
+    document.getElementById('f-type').value   = s.type;
+    document.getElementById('f-cost').value   = s.cost || '';
+    document.getElementById('f-start').value  = s.start;
+    document.getElementById('f-expiry').value = s.expiry;
+    document.getElementById('f-notes').value  = s.notes || '';
+  } else {
+    ['f-name','f-vendor','f-cost','f-start','f-expiry','f-notes'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('f-type').value = 'license';
+  }
+  document.getElementById('modalOverlay').classList.add('open');
+}
+
+function closeModal() {
+  if (isSaving) return;
+  document.getElementById('modalOverlay').classList.remove('open');
+  editingSpId = null;
+}
+
+function editService(spId) { openModal(spId); }
+
+async function deleteService(spId) {
+  if (!confirm('Delete this service from SharePoint?')) return;
+  showStatus('Deleting…', 'info', true);
+  try {
+    if (!spId.startsWith('demo')) {
+      await deleteFromSharePoint(spId);
+    }
+    services = services.filter(s => s.spId !== spId);
+    renderTable();
+    showStatus('✓ Service deleted from SharePoint', 'success');
+    setTimeout(hideStatus, 3000);
+  } catch(e) {
+    showStatus('Error deleting: ' + e.message, 'error');
+  }
+}
+
+async function saveService() {
+  const name   = document.getElementById('f-name').value.trim();
+  const start  = document.getElementById('f-start').value;
+  const expiry = document.getElementById('f-expiry').value;
+  if (!name || !start || !expiry) { alert('Please fill in Name, Start Date and Expiry Date.'); return; }
+
+  const data = {
+    name,
+    vendor: document.getElementById('f-vendor').value.trim(),
+    type:   document.getElementById('f-type').value,
+    cost:   document.getElementById('f-cost').value.trim(),
+    start, expiry,
+    notes:  document.getElementById('f-notes').value.trim(),
+  };
+
+  isSaving = true;
+  document.getElementById('btnSave').disabled = true;
+  document.getElementById('saveLabel').textContent = 'Saving…';
+  showStatus('Saving to SharePoint…', 'info', true);
+
+  try {
+    if (editingSpId) {
+      // UPDATE
+      if (!editingSpId.startsWith('demo')) {
+        await updateInSharePoint(editingSpId, data);
+      }
+      const idx = services.findIndex(s => s.spId === editingSpId);
+      services[idx] = { ...services[idx], ...data };
+      showStatus('✓ Service updated in SharePoint', 'success');
+    } else {
+      // CREATE
+      let newSpId;
+      if (accessToken) {
+        newSpId = await createInSharePoint(data);
+      } else {
+        newSpId = 'demo' + Date.now();
+      }
+      services.push({ spId: newSpId, ...data });
+      showStatus('✓ Service added to SharePoint', 'success');
+    }
+    renderTable();
+    closeModal();
+    setTimeout(hideStatus, 3500);
+  } catch(e) {
+    showStatus('Error saving: ' + e.message, 'error');
+  } finally {
+    isSaving = false;
+    document.getElementById('btnSave').disabled = false;
+    document.getElementById('saveLabel').textContent = 'Save Service';
+  }
+}
+
+// ══════════════════════════════════════════════════════
+//  EXPORT TO EXCEL (CSV)
+// ══════════════════════════════════════════════════════
+function exportToExcel() {
+  const headers = ['Service Name','Vendor','Type','Start Date','Expiry Date','Days Left','Status','Cost','Notes'];
+  const rows = services.map(s => {
+    const days = daysLeft(s.expiry);
+    const status = getStatus(days);
+    return [
+      `"${s.name}"`, `"${s.vendor}"`, s.type,
+      s.start, s.expiry, days,
+      status === 'active' ? 'Active' : status === 'warning' ? 'Expiring Soon' : 'Expired',
+      `"${s.cost}"`, `"${s.notes}"`
+    ].join(',');
+  });
+  const csv = [headers.join(','), ...rows].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `ServiceTrack_${new Date().toISOString().split('T')[0]}.csv`;
+  a.click();
+}
+
+// ── Close modal on overlay click
+document.getElementById('modalOverlay').addEventListener('click', function(e) {
+  if (e.target === this) closeModal();
+});
 </script>
+
+<!--
+══════════════════════════════════════════════════════════
+  SETUP INSTRUCTIONS — Read before deploying
+══════════════════════════════════════════════════════════
+
+STEP 1: Register an Azure App
+  1. Go to https://portal.azure.com
+  2. Search "App registrations" → New registration
+  3. Name: ServiceTrack
+  4. Supported account types: "Accounts in this organizational directory only"
+  5. Redirect URI: Select "Single-page application (SPA)"
+     → Enter the URL where this file is hosted
+       (e.g. https://alfanar01.sharepoint.com/sites/AssetManagement/SiteAssets/ServiceTrack.html)
+       OR http://localhost for local testing
+  6. Click Register
+
+STEP 2: Copy credentials into CONFIG above
+  - CLIENT_ID = Application (client) ID shown on app overview page
+  - TENANT_ID = Directory (tenant) ID shown on app overview page
+
+STEP 3: Grant API Permissions
+  1. In your App Registration → API permissions → Add a permission
+  2. Choose "SharePoint" → Delegated permissions
+  3. Add: AllSites.Write  (or Sites.ReadWrite.All)
+  4. Click "Grant admin consent for Alfanar"
+
+STEP 4: Verify SharePoint List columns
+  Make sure your ServiceTracker list has these columns:
+  - Title        (single line of text)  ← Service Name
+  - Vendor       (single line of text)
+  - Type         (single line of text)  ← values: license / amc / subscription
+  - StartDate    (date only)
+  - ExpiryDate   (date only)
+  - Cost         (single line of text)
+  - Notes        (single line of text)
+
+STEP 5: Host the file
+  Upload this HTML file to your SharePoint Site Assets library or any
+  web server accessible to your users. The file works as a standalone
+  single-file app — no npm, no server needed.
+
+══════════════════════════════════════════════════════════
+-->
 </body>
 </html>
